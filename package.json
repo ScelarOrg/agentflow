@@ -51,12 +51,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/agent-flow.git"
+    "url": "https://github.com/ScelarOrg/agentflow.git"
   },
   "bugs": {
-    "url": "https://github.com/yourusername/agent-flow/issues"
+    "url": "https://github.com/ScelarOrg/agentflow/issues"
   },
-  "homepage": "https://github.com/yourusername/agent-flow#readme",
+  "homepage": "https://github.com/ScelarOrg/agentflow#readme",
   "engines": {
     "node": ">=18.0.0"
   },
