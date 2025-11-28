@@ -1,6 +1,6 @@
 # AgentFlow
 
-[![npm version](https://img.shields.io/npm/v/agent-flow.svg)](https://www.npmjs.com/package/agent-flow)
+[![npm version](https://img.shields.io/npm/v/@scelar/agentflow.svg)](https://www.npmjs.com/package/@scelar/agentflow)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **Structured, type-safe AI workflows for the Vercel AI SDK.**
