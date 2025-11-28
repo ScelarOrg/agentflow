@@ -1,0 +1,78 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors / IDEs
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# Node dependencies
+node_modules/
+
+# Optional npm cache
+.npm
+
+# Build outputs
+dist/
+build/
+out/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Environment / secret files
+.env
+.env.*.local
+.env.local
+.env.test
+.env.production
+
+# Lockfiles you might not want in repo (careful: typically commit package-lock.json / yarn.lock)
+# Uncomment to ignore if you intentionally don't track locks
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# Testing
+jest.config.js.cache
+.vitest/
+
+# Misc
+*.tgz
+.cache/
+.tmp/
+
+# TypeScript
+*.tsbuildinfo
+
+# Yarn Plug'n'Play
+.pnp.*
+.yarn/*
+!.yarn/releases
+!.yarn/plugins
+!.yarn/sdks
+!.yarn/patches
+
+# IDE project files
+*.iml
+
+# OS swap / temp
+*~
+*.swp
+*.swo

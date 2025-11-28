@@ -1,0 +1,44 @@
+# Source files (only dist/ is published)
+src/
+
+# Development files
+tsconfig.json
+.git/
+.gitignore
+*.log
+
+# Tests
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+__tests__/
+test/
+tests/
+
+# Examples (not needed in published package)
+examples/
+src/examples/
+
+# Development dependencies
+node_modules/
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# Editor configs
+.vscode/
+.idea/
+*.sublime-*
+.editorconfig
+
+# Misc
+*.tgz
+.DS_Store
+Thumbs.db
+.env
+.env.*
+coverage/
+.nyc_output/
