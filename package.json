@@ -1,6 +1,6 @@
 {
   "name": "@scelar/agentflow",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "100% Type-Safe AI Workflows",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

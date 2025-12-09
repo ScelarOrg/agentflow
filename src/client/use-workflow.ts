@@ -433,7 +433,9 @@ export function useWorkflow(options: UseWorkflowOptions) {
 
           if (
             currentMessageRef.current &&
-            messages[messages.length - 1]?.id === currentMessageRef.current.id
+            messages[messages.length - 1]?.id ===
+              currentMessageRef.current.id &&
+            messages[messages.length - 1]?.step === event.step // Only append if same step
           ) {
             // Create proper copies to avoid mutation
             const lastMsg = { ...messages[messages.length - 1] };

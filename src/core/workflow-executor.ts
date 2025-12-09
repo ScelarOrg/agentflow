@@ -65,8 +65,16 @@ export class WorkflowExecutor {
   async *stream(input: unknown): AsyncGenerator<StreamEvent> {
     // Store input for access in prompts/conditions
     this.input = input;
-    this.state = {};
-    this.completedSteps = new Set();
+
+    // If resuming with previous state, restore it; otherwise start fresh
+    if (this.resumePayload?.previousState) {
+      this.state = { ...this.resumePayload.previousState } as WorkflowState;
+      // Mark completed steps based on state keys
+      this.completedSteps = new Set(Object.keys(this.state));
+    } else {
+      this.state = {};
+      this.completedSteps = new Set();
+    }
 
     // If we have a resume payload, we do NOT mark the step as completed
     // The step will be re-executed with the user's tool result, allowing the LLM
@@ -82,6 +90,9 @@ export class WorkflowExecutor {
       }
 
       // Sequential execution (original behavior)
+      // Track actual step number for progress (not loop index, which skips completed steps)
+      let executedStepNumber = this.completedSteps.size;
+
       for (
         let currentIndex = 0;
         currentIndex < this.steps.length;
@@ -90,12 +101,25 @@ export class WorkflowExecutor {
         const step = this.steps[currentIndex];
         currentStepName = step.name;
 
+        // Skip already completed steps (important for resume)
+        // But don't skip the step we're resuming on
+        if (
+          this.completedSteps.has(step.name) &&
+          this.resumePayload?.stepName !== step.name
+        ) {
+          logger.debug(`Skipping already completed step: ${step.name}`);
+          continue;
+        }
+
+        // Increment executed step counter
+        executedStepNumber++;
+
         // Evaluate step condition
         const conditionResult = this.evaluateCondition(step);
 
         // Calculate progress info
         const totalSteps = this.steps.length;
-        const stepIndex = currentIndex + 1; // 1-based index
+        const stepIndex = executedStepNumber; // Use actual executed step number
 
         if (conditionResult.skip) {
           yield* this.handleSkippedStep(

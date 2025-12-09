@@ -156,4 +156,5 @@ export interface ResumePayload {
   toolName?: string; // Name of the tool being resumed
   result: unknown;
   stepName: string; // Added for step validation
+  previousState?: Record<string, unknown>; // Accumulated state from previous steps
 }

@@ -151,13 +151,40 @@ export class StepExecutor {
       result: unknown;
     } | null,
   ): AsyncGenerator<StreamEvent> {
+    // Register tools for this step first (needed for isUserInteractive check)
+    this.toolManager.registerTools(step.name, step.tools);
+
+    // If resuming with a user-interactive tool result, complete the step immediately
+    // No need to re-run the LLM - the user has provided the input we need
+    if (
+      resumeToolResult &&
+      this.toolManager.isUserInteractive(resumeToolResult.toolName)
+    ) {
+      logger.debug(
+        `Completing step "${step.name}" with user-interactive result for ${resumeToolResult.toolName}`,
+      );
+
+      yield {
+        type: "tool-result",
+        step: step.name,
+        tool: resumeToolResult.toolName,
+        result: resumeToolResult.result,
+        toolCallId: resumeToolResult.toolCallId,
+      };
+
+      // Return the step result with the user's input as the tool result
+      return {
+        text: "",
+        toolResults: {
+          [resumeToolResult.toolName]: resumeToolResult.result,
+        },
+      };
+    }
+
     const promptText =
       typeof step.prompt === "function"
         ? step.prompt(state, input, this.context)
         : step.prompt;
-
-    // Register tools for this step
-    this.toolManager.registerTools(step.name, step.tools);
 
     let stepOutput = "";
     const toolResults: Record<string, unknown> = {};
@@ -352,13 +379,19 @@ export class StepExecutor {
               typeof (handlerResult as any)[Symbol.asyncIterator] === "function"
             ) {
               let accumulatedOutput: any = null;
+              let generatorReturnValue: any = undefined;
 
-              // Stream the tool output
-              for await (const chunk of handlerResult as AsyncGenerator<
-                any,
-                any,
-                any
-              >) {
+              // Stream the tool output using .next() to capture the return value
+              const generator = handlerResult as AsyncGenerator<any, any, any>;
+              while (true) {
+                const { value: chunk, done } = await generator.next();
+
+                if (done) {
+                  // Generator completed - 'chunk' is the return value
+                  generatorReturnValue = chunk;
+                  break;
+                }
+
                 // Check if it's a ToolStreamChunk
                 if (chunk && typeof chunk === "object" && "delta" in chunk) {
                   // Merge delta into accumulated output
@@ -393,8 +426,11 @@ export class StepExecutor {
                 }
               }
 
-              // Get the final return value from the generator
-              const finalResult = accumulatedOutput;
+              // Use the generator's return value if available, otherwise fall back to accumulated output
+              const finalResult =
+                generatorReturnValue !== undefined
+                  ? generatorReturnValue
+                  : accumulatedOutput;
 
               // Emit final tool-result
               yield {
