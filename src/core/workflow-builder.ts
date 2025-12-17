@@ -9,6 +9,11 @@ import {
   ExecuteContext,
   InferToolResults,
   ValidationResult,
+  StepType,
+  ToolChoice,
+  StepError,
+  ErrorAction,
+  ErrorHandlerActions,
 } from "../types";
 import { z } from "zod";
 import type { LanguageModel } from "ai";
@@ -71,30 +76,55 @@ export class WorkflowBuilder<
     TStepName extends string,
     TTools extends Record<string, FlowTool> = {},
     TSchema extends z.ZodTypeAny = never,
-    TMode extends "text" = "text",
+    TStepType extends StepType = "ai",
     TNewState extends WorkflowState = AddStepToState<
       TState,
       TStepName,
       TTools,
       TSchema,
-      TMode
+      TStepType extends "structured" ? "object" : "text"
     >,
   >(
     name: TStepName,
     config: {
       /** Human-readable description of what this step does */
       description?: string;
+      /**
+       * Step execution type:
+       * - 'ai' (default): Full AI loop with streamText, supports tools
+       * - 'structured': Uses generateObject for guaranteed typed output, no tools
+       */
+      type?: TStepType;
       model: LanguageModel;
       tools?: TTools;
+      /**
+       * Zod schema for structured output (required when type: 'structured')
+       * The step will use generateObject and return typed data matching this schema
+       */
+      schema?: TSchema;
       prompt:
         | string
         | ((state: TState, input: TInput, context?: unknown) => string);
+      /**
+       * Control tool calling behavior (only applies to type: 'ai'):
+       * - 'auto': Model decides whether to call tools (default)
+       * - 'required': Model must call at least one tool
+       * - 'none': Model cannot call tools
+       * - { type: 'tool', toolName: string }: Model must call specific tool
+       */
+      toolChoice?: ToolChoice;
       /** Maximum retries for this step (default: 3) */
       maxRetries?: number;
       /** Timeout for entire step in milliseconds */
       timeout?: number;
       /** Use TOON format for tool schemas to reduce token usage by ~40% (default: false) */
       useTOON?: boolean;
+      /**
+       * Data requirements that must be satisfied before step runs.
+       * - string[]: Paths that must exist and be truthy (e.g., ['search.toolResults.hotels'])
+       * - Record<string, ZodSchema>: Paths with schema validation
+       */
+      requires?: string[] | Record<string, z.ZodTypeAny>;
       /** Condition to skip or modify step execution */
       condition?: (
         state: TState,
@@ -113,6 +143,16 @@ export class WorkflowBuilder<
         result: StepResult,
         context: ExecuteContext,
       ) => Promise<void> | void;
+      /**
+       * Error handler for step-level failures.
+       * Called when step fails after retries, validation fails, or requirements not met.
+       * Return an action to retry, goto another step, or skip with data.
+       */
+      onError?: (
+        error: StepError,
+        state: TState,
+        actions: ErrorHandlerActions,
+      ) => ErrorAction;
       /** Steps that must complete before this step runs (for DAG execution) */
       dependsOn?: string[];
     },
@@ -151,17 +191,40 @@ export class WorkflowBuilder<
       );
     }
 
+    // Validate structured steps have a schema
+    if (config.type === "structured" && !config.schema) {
+      throw new ValidationError(
+        `Step "${name}" has type 'structured' but no schema defined`,
+        { stepName: name },
+      );
+    }
+
+    // Warn if tools are provided with structured type (they won't be used)
+    if (
+      config.type === "structured" &&
+      config.tools &&
+      Object.keys(config.tools).length > 0
+    ) {
+      console.warn(
+        `Step "${name}" has type 'structured' - tools will be ignored. Use type 'ai' for tool support.`,
+      );
+    }
+
     this.steps.push({
       name,
       description: config.description,
+      type: config.type,
       model: config.model,
       tools: config.tools,
+      schema: config.schema,
       prompt: config.prompt as
         | string
         | ((state: WorkflowState, input: unknown, context?: unknown) => string),
+      toolChoice: config.toolChoice,
       maxRetries: config.maxRetries ?? 3,
       timeout: config.timeout,
       useTOON: config.useTOON,
+      requires: config.requires,
       condition: config.condition as
         | ((
             state: WorkflowState,
@@ -173,6 +236,7 @@ export class WorkflowBuilder<
         | ((result: any) => ValidationResult)
         | undefined,
       execute: config.execute,
+      onError: config.onError as any,
       dependsOn: config.dependsOn,
     } as FlowStep<TState, TTools, TStepName, TSchema, unknown, TInput>);
 

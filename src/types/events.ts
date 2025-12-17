@@ -41,6 +41,12 @@ export type StreamEvent =
       toolCallId: string;
     }
   | {
+      type: "structured-output";
+      step: string;
+      /** The structured output data */
+      output: unknown;
+    }
+  | {
       type: "step-start";
       step: string;
       /** Optional step description */
@@ -101,6 +107,12 @@ export function isToolResultEvent(
   event: StreamEvent,
 ): event is Extract<StreamEvent, { type: "tool-result" }> {
   return event.type === "tool-result";
+}
+
+export function isStructuredOutputEvent(
+  event: StreamEvent,
+): event is Extract<StreamEvent, { type: "structured-output" }> {
+  return event.type === "structured-output";
 }
 
 export function isStepStartEvent(

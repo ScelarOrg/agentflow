@@ -39,6 +39,12 @@ export type {
   ExecuteContext,
   FlowStep,
   ValidationResult,
+  StepType,
+  ToolChoice,
+  StepErrorType,
+  StepError,
+  ErrorAction,
+  ErrorHandlerActions,
 } from "./steps";
 
 // Message types
@@ -50,6 +56,7 @@ export {
   isToolOutputStreamingPart,
   isToolResultPart,
   isToolCallPendingPart,
+  isStructuredOutputPart,
 } from "./messages";
 
 // Event types
@@ -66,6 +73,7 @@ export {
   isToolPendingEvent,
   isToolOutputDeltaEvent,
   isToolResultEvent,
+  isStructuredOutputEvent,
   isStepStartEvent,
   isStepCompleteEvent,
   isWorkflowCompleteEvent,

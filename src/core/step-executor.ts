@@ -1,5 +1,6 @@
 import {
   streamText,
+  generateObject,
   type LanguageModel,
   wrapLanguageModel,
   type LanguageModelMiddleware,
@@ -137,6 +138,77 @@ export class StepExecutor {
   }
 
   /**
+   * Execute a structured output step using generateObject.
+   * This guarantees typed output matching the schema - no tool calling needed.
+   */
+  private async *executeStructuredStep(
+    step: FlowStep<any, any, any, any, any, any>,
+    state: WorkflowState,
+    input: unknown,
+  ): AsyncGenerator<StreamEvent, StepResult> {
+    if (!step.schema) {
+      throw new WorkflowExecutionError(
+        `Step "${step.name}" has type 'structured' but no schema defined`,
+        { step: step.name },
+      );
+    }
+
+    const promptText =
+      typeof step.prompt === "function"
+        ? step.prompt(state, input, this.context)
+        : step.prompt;
+
+    logger.debug(
+      `[${step.name}] Executing structured step with generateObject`,
+    );
+
+    try {
+      const result = await generateObject({
+        model: step.model,
+        schema: step.schema,
+        prompt: promptText,
+      });
+
+      const toolCallId = `structured-${step.name}-${Date.now()}`;
+
+      logger.debug(`[${step.name}] Structured output:`, result.object);
+
+      // Emit tool-call first (so UI shows "calling" state)
+      yield {
+        type: "tool-call",
+        step: step.name,
+        tool: step.name,
+        args: {}, // No args for structured output
+        toolCallId,
+      };
+
+      // Then emit tool-result (so UI shows completed state)
+      yield {
+        type: "tool-result",
+        step: step.name,
+        tool: step.name,
+        result: result.object,
+        toolCallId,
+      };
+
+      // Wrap under step name so access pattern is 1-1 with tool steps:
+      // state.plan.toolResults.plan instead of state.plan.toolResults
+      return {
+        text: "",
+        toolResults: {
+          [step.name]: result.object,
+        },
+      };
+    } catch (error) {
+      logger.error(`[${step.name}] Structured step failed:`, error);
+      throw new WorkflowExecutionError(
+        `Step "${step.name}" structured output generation failed: ${error instanceof Error ? error.message : String(error)}`,
+        { step: step.name, originalError: error },
+      );
+    }
+  }
+
+  /**
    * Execute attempt and collect events (for timeout support)
    * Can't race async generators directly, so we collect events first
    */
@@ -151,6 +223,11 @@ export class StepExecutor {
       result: unknown;
     } | null,
   ): AsyncGenerator<StreamEvent> {
+    // Handle structured output steps (uses generateObject instead of streamText)
+    if (step.type === "structured") {
+      return yield* this.executeStructuredStep(step, state, input);
+    }
+
     // Register tools for this step first (needed for isUserInteractive check)
     this.toolManager.registerTools(step.name, step.tools);
 
@@ -261,6 +338,7 @@ export class StepExecutor {
       model: monitoredModel as LanguageModel,
       messages,
       tools: aiSdkTools,
+      toolChoice: step.toolChoice,
     });
 
     try {

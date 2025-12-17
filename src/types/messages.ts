@@ -27,6 +27,11 @@ export type MessagePart =
       toolCallId: string;
       toolName: string;
       args: unknown;
+    }
+  | {
+      type: "structured-output";
+      /** The structured output data from generateObject */
+      output: unknown;
     };
 
 // Type guards for MessagePart
@@ -58,6 +63,12 @@ export function isToolCallPendingPart(
   part: MessagePart,
 ): part is Extract<MessagePart, { type: "tool-call-pending" }> {
   return part.type === "tool-call-pending";
+}
+
+export function isStructuredOutputPart(
+  part: MessagePart,
+): part is Extract<MessagePart, { type: "structured-output" }> {
+  return part.type === "structured-output";
 }
 
 export interface Message {

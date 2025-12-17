@@ -11,6 +11,7 @@ import {
   isToolOutputDeltaEvent,
   isToolResultEvent,
   isToolPendingEvent,
+  isStructuredOutputEvent,
   isStepStartEvent,
   isStepCompleteEvent,
   isWorkflowCompleteEvent,
@@ -411,6 +412,38 @@ export function useWorkflow(options: UseWorkflowOptions) {
               id: `msg-${Date.now()}-${Math.random()}`,
               role: "assistant",
               parts: [toolResultPart],
+              step: event.step,
+              timestamp: Date.now(),
+            };
+            currentMessageRef.current = newMsg;
+            messages.push(newMsg);
+          }
+
+          return { ...prev, messages };
+        });
+      } else if (isStructuredOutputEvent(event)) {
+        // Handle structured output from generateObject steps
+        // This is NOT a tool call - it's direct structured output
+        setState((prev) => {
+          const messages = [...prev.messages];
+          const structuredPart: MessagePart = {
+            type: "structured-output",
+            output: event.output,
+          };
+
+          if (
+            currentMessageRef.current &&
+            messages[messages.length - 1]?.id === currentMessageRef.current.id
+          ) {
+            const lastMsg = { ...messages[messages.length - 1] };
+            lastMsg.parts = [...lastMsg.parts, structuredPart];
+            messages[messages.length - 1] = lastMsg;
+            currentMessageRef.current = lastMsg;
+          } else {
+            const newMsg: Message = {
+              id: `msg-${Date.now()}-${Math.random()}`,
+              role: "assistant",
+              parts: [structuredPart],
               step: event.step,
               timestamp: Date.now(),
             };

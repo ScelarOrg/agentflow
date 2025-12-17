@@ -7,11 +7,14 @@ import {
   WorkflowExecutionError,
   StepResult,
   ExecuteContext,
+  StepError,
+  ErrorAction,
 } from "../types";
 import { ToolManager } from "./tool-manager";
 import { StepExecutor } from "./step-executor";
 import { logger } from "./logger";
 import { WorkflowErrorHandler } from "./workflow-builder";
+import { z } from "zod";
 
 /**
  * Executes a workflow by processing steps sequentially or in parallel
@@ -262,6 +265,43 @@ export class WorkflowExecutor {
     stepIndex: number,
     totalSteps: number,
   ): AsyncGenerator<StreamEvent, boolean> {
+    // Validate requirements before executing step
+    try {
+      this.validateRequirements(step);
+    } catch (error) {
+      // Try step-level error handler first
+      const action = this.handleStepError(
+        step,
+        error instanceof Error ? error : new Error(String(error)),
+        "missing_dependency",
+      );
+
+      if (action?.action === "skip") {
+        // Skip with optional data
+        if (action.data !== undefined) {
+          this.state[step.name] = {
+            text: "",
+            toolResults: action.data as Record<string, unknown>,
+          };
+          yield {
+            type: "step-complete",
+            step: step.name,
+            state: this.state,
+            stepIndex,
+            totalSteps,
+          };
+        }
+        return false;
+      } else if (action?.action === "goto") {
+        // Goto is handled by throwing a special error that the caller catches
+        throw new WorkflowExecutionError(`Goto requested: ${action.stepName}`, {
+          gotoStep: action.stepName,
+        });
+      }
+      // Otherwise rethrow
+      throw error;
+    }
+
     yield {
       type: "step-start",
       step: step.name,
@@ -673,6 +713,131 @@ export class WorkflowExecutor {
           { step: step.name },
         );
       }
+    }
+  }
+
+  /**
+   * Get a nested value from an object using dot notation path
+   * e.g., "search.toolResults.hotels" -> state.search.toolResults.hotels
+   */
+  private getNestedValue(obj: unknown, path: string): unknown {
+    const parts = path.split(".");
+    let current: unknown = obj;
+
+    for (const part of parts) {
+      if (current === null || current === undefined) {
+        return undefined;
+      }
+      if (typeof current !== "object") {
+        return undefined;
+      }
+      current = (current as Record<string, unknown>)[part];
+    }
+
+    return current;
+  }
+
+  /**
+   * Validate step requirements before execution.
+   * Throws WorkflowExecutionError if requirements are not satisfied.
+   */
+  private validateRequirements(
+    step: FlowStep<any, any, any, any, any, any>,
+  ): void {
+    if (!step.requires) {
+      return;
+    }
+
+    if (Array.isArray(step.requires)) {
+      // Simple path check: paths must exist and be truthy
+      for (const path of step.requires) {
+        const value = this.getNestedValue(this.state, path);
+        if (value === undefined || value === null) {
+          throw new WorkflowExecutionError(
+            `Step "${step.name}" requires "${path}" but it's missing or null`,
+            {
+              step: step.name,
+              missingPath: path,
+              errorType: "missing_dependency" as const,
+            },
+          );
+        }
+      }
+    } else {
+      // Schema validation: validate values against Zod schemas
+      for (const [path, schema] of Object.entries(step.requires)) {
+        const value = this.getNestedValue(this.state, path);
+        const result = (schema as z.ZodTypeAny).safeParse(value);
+
+        if (!result.success) {
+          throw new WorkflowExecutionError(
+            `Step "${step.name}" requires validation failed for "${path}": ${result.error.issues.map((i) => i.message).join(", ")}`,
+            {
+              step: step.name,
+              path,
+              errorType: "validation_failed" as const,
+              errors: result.error.issues,
+            },
+          );
+        }
+      }
+    }
+
+    logger.debug(`[${step.name}] All requirements validated successfully`);
+  }
+
+  /**
+   * Create error handler actions helper
+   */
+  private createErrorHandlerActions() {
+    return {
+      retry: (opts?: { maxAttempts?: number }) => ({
+        action: "retry" as const,
+        maxAttempts: opts?.maxAttempts,
+      }),
+      goto: (stepName: string) => ({
+        action: "goto" as const,
+        stepName,
+      }),
+      skip: (data?: unknown) => ({
+        action: "skip" as const,
+        data,
+      }),
+    };
+  }
+
+  /**
+   * Handle step error with onError handler if defined
+   * Returns the action to take, or undefined to rethrow
+   */
+  private handleStepError(
+    step: FlowStep<any, any, any, any, any, any>,
+    error: Error,
+    errorType: StepError["type"],
+  ): ErrorAction {
+    if (!step.onError) {
+      return undefined;
+    }
+
+    const stepError: StepError = {
+      type: errorType,
+      message: error.message,
+      details:
+        error instanceof WorkflowExecutionError ? error.details : undefined,
+    };
+
+    try {
+      return step.onError(
+        stepError,
+        this.state,
+        this.createErrorHandlerActions(),
+      );
+    } catch (handlerError) {
+      logger.error(
+        `onError handler for step "${step.name}" threw:`,
+        handlerError,
+      );
+      return undefined;
     }
   }
 
